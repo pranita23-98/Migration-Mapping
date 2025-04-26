@@ -1,0 +1,274 @@
+---
+title: "<span style='color:maroon; font-size:2em;'>Mapping Migration: Trends, Insights, and Economic Impact</span>"
+analyst: "Pranita Deshmukh"
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+    embed-resources: true
+    code-fold: true
+    theme: minty
+    smooth-scroll: true
+---
+# Summary
+
+Migration patterns shape the economic, social, and political landscapes of societies worldwide. In this report, we provide a concise overview of global migration trends, highlight key country and regional insights, and uncover relationships between migration and economic indicators. Through interactive maps and visualizations, readers will gain an immediate understanding of which areas experience the highest inflows and outflows, how GDP correlates with net migration, and how patterns differ across continents.
+
+# Introduction
+
+Migration is a defining force in global demographics, shaped by economic opportunities, conflicts, and policy shifts.  
+This report highlights important findings and economic effects while offering a data-driven investigation of migration patterns across continents.
+
+# Key Insights
+
+## Average Net Migration Rate Across the Globe
+
+::: {.cell}
+```{python}
+# %pip install pandas geopandas pyogrio plotnine
+
+import pandas as pd
+import geopandas as gpd
+import plotnine as p9
+
+# Load data
+indicator_1 = pd.read_csv('unicef_indicator_1.csv')
+metadata = pd.read_csv('unicef_metadata.csv')
+
+# Filter net migration rate
+migration = indicator_1[indicator_1['indicator'] == 'Net migration rate (per 1,000 population)']
+migration_avg = migration.groupby('country')['obs_value'].mean().reset_index()
+
+# Load world geometries
+world = gpd.read_file(
+    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
+    engine="pyogrio"
+)
+
+# Merge migration data
+world = world.merge(migration_avg, left_on='NAME', right_on='country', how='left')
+
+# Explode MultiPolygons into individual Polygons
+world = world.explode(index_parts=False)
+
+# For each polygon, extract x and y separately
+world['x'] = world.geometry.apply(lambda geom: list(geom.exterior.coords.xy[0]))
+world['y'] = world.geometry.apply(lambda geom: list(geom.exterior.coords.xy[1]))
+
+rows = []
+for idx, row in world.iterrows():
+    xs = row['x']
+    ys = row['y']
+    for x, y in zip(xs, ys):
+        rows.append({
+            'x': x,
+            'y': y,
+            'obs_value': row['obs_value'],
+            'group': idx,  # group polygons together by original index
+        })
+
+plot_data = pd.DataFrame(rows)
+
+# Now plot!
+(
+    p9.ggplot(plot_data.dropna(subset=["obs_value"]))
+    + p9.aes(x='x', y='y', group='group', fill='obs_value')
+    + p9.geom_polygon()
+    + p9.coord_equal()
+    + p9.scale_fill_gradient2(
+        name="Net Migration",
+        low='#d73027',   # deep red (strong negative)
+        mid='#fffbbf',   # light yellow (neutral)
+        high='#1a9850',  # strong green (positive)
+        midpoint=0
+    )
+    + p9.ggtitle("Average Net Migration Rate Across the Globe")
+    + p9.theme_minimal()
+)
+
+
+```
+Explanation: 
+
+This world map visualizes the average net migration rate by country, where blue shades represent positive net migration (more immigrants than emigrants) and red indicates negative migration. Countries like Canada and Australia show strong positive rates, while several African and Asian nations show outflows.
+
+:::
+
+## Top 5 Countries with Highest Net Migration Rates
+
+::: {.cell}
+```{python}
+top5 = migration_avg.nlargest(5, 'obs_value')
+
+(p9.ggplot(top5, p9.aes(x='reorder(country, obs_value)', y='obs_value'))
+ + p9.geom_col(fill='seagreen')
+ + p9.coord_flip()
+ + p9.ggtitle("Top 5 Countries with Highest Net Migration Rates")
+ + p9.xlab("Country")
+ + p9.ylab("Net Migration Rate (per 1000 population)")
+ + p9.theme_minimal())
+```
+Explanation:
+
+The top five countries with the highest net migration rates tend to be wealthy or politically stable regions, attracting large inflows of migrants seeking better opportunities, security, and living standards.
+
+:::
+
+## Bottom 5 Countries with Lowest Net Migration Rates
+
+::: {.cell}
+```{python}
+bottom5 = migration_avg.nsmallest(5, 'obs_value')
+
+(p9.ggplot(bottom5, p9.aes(x='reorder(country, obs_value)', y='obs_value'))
+ + p9.geom_col(fill='firebrick')
+ + p9.coord_flip()
+ + p9.ggtitle("Bottom 5 Countries with Lowest Net Migration Rates")
+ + p9.xlab("Country")
+ + p9.ylab("Net Migration Rate (per 1000 population)")
+ + p9.theme_minimal())
+```
+Explanation:
+
+Countries with the lowest net migration rates often face conflict, economic crises, or political instability, pushing large portions of their populations to emigrate in search of better prospects.
+
+:::
+
+## Does GDP of a Nation Affect Migration?
+
+::: {.cell}
+```{python}
+# Fix metadata columns
+metadata.columns = metadata.columns.str.strip()
+
+# GDP column we have
+gdp_col = 'GDP per capita (constant 2015 US$)'
+
+# Merge metadata with migration data
+merged = metadata.merge(migration_avg, on='country', how='left')
+
+# Now plot
+(
+    p9.ggplot(merged.dropna(subset=[gdp_col, 'obs_value']),
+              p9.aes(x=gdp_col, y='obs_value'))   # <--- no backticks here
+    + p9.geom_point(color='orange')
+    + p9.geom_smooth(method='lm', color='blue')
+    + p9.scale_x_log10()
+    + p9.ggtitle("GDP per Capita (constant 2015 US$) vs Net Migration Rate")
+    + p9.xlab("GDP per Capita (log scale, constant 2015 US$)")
+    + p9.ylab("Net Migration Rate")
+    + p9.theme_minimal()
+)
+
+```
+
+Explanation:
+
+There is a general trend where higher GDP per capita is associated with higher net migration rates. Wealthier countries tend to attract immigrants, while poorer countries experience emigration. However, there are notable outliers due to geopolitical or cultural factors.
+
+:::
+
+## How Do Migration Patterns Differ Across Continents?
+
+::: {.cell}
+```{python}
+# First, map countries to regions manually
+continent_mapping = {
+    "China": "Asia", "India": "Asia", "Japan": "Asia", "Indonesia": "Asia",
+    "Pakistan": "Asia", "Bangladesh": "Asia", "Russia": "Asia", "Saudi Arabia": "Asia",
+    "Iran": "Asia", "Turkey": "Asia", "Thailand": "Asia", "South Korea": "Asia",
+    "Philippines": "Asia", "Vietnam": "Asia", "Iraq": "Asia", "Afghanistan": "Asia",
+    "United States": "North America", "Canada": "North America", "Mexico": "North America",
+    "Brazil": "South America", "Argentina": "South America", "Colombia": "South America",
+    "Germany": "Europe", "France": "Europe", "United Kingdom": "Europe", "Italy": "Europe",
+    "Spain": "Europe", "Nigeria": "Africa", "South Africa": "Africa", "Egypt": "Africa",
+    "Australia": "Oceania", "New Zealand": "Oceania",
+}
+
+# Copy and map region
+migration_year_region = migration.copy()
+migration_year_region['Region'] = migration_year_region['country'].map(continent_mapping)
+
+# Then group by region
+region_trends = migration_year_region.groupby('Region')['obs_value'].mean().reset_index()
+
+# Now plot
+(p9.ggplot(region_trends.dropna(), p9.aes(x='Region', y='obs_value', fill='Region'))
+ + p9.geom_bar(stat='identity')
+ + p9.ggtitle("Average Net Migration Rate by Region")
+ + p9.xlab("Region")
+ + p9.ylab("Net Migration Rate")
+ + p9.theme_minimal()
+ + p9.theme(axis_text_x=p9.element_text(rotation=45, hjust=1)))
+
+```
+Explanation:
+
+This regional comparison shows that Oceania and North America have the highest positive net migration rates, while Africa and some parts of Asia experience net outflows. Regional development levels, conflict rates, and immigration policies significantly influence these patterns.
+
+:::
+
+## A Deeper Look into Asia's Migration Volatility
+
+::: {.cell}
+```{python}
+possible_region_columns = [col for col in metadata.columns if 'region' in col.lower() or 'continent' in col.lower()]
+
+
+if possible_region_columns:
+    region_col = possible_region_columns[0]  # take the first matching column
+    migration_with_region = migration.merge(metadata[['country', region_col]], on='country', how='left')
+    migration_with_region = migration_with_region.rename(columns={region_col: 'Region'})
+else:
+    continent_mapping = {
+        "China": "Asia", "India": "Asia", "Japan": "Asia", "Indonesia": "Asia",
+        "Pakistan": "Asia", "Bangladesh": "Asia", "Russia": "Asia", "Saudi Arabia": "Asia",
+        "Iran": "Asia", "Turkey": "Asia", "Thailand": "Asia", "South Korea": "Asia",
+        "Philippines": "Asia", "Vietnam": "Asia", "Iraq": "Asia", "Afghanistan": "Asia",
+        # You can expand this list for better coverage
+    }
+    migration_with_region = migration.copy()
+    migration_with_region['Region'] = migration_with_region['country'].map(continent_mapping)
+
+asia_migration = migration_with_region[migration_with_region['Region'] == 'Asia']
+
+
+(
+    p9.ggplot(asia_migration.dropna(subset=["obs_value"]),  # remove missing values
+              p9.aes(
+                  x='time_period',   # x-axis: Year (time_period)
+                  y='obs_value',     # y-axis: Net migration rate (per 1000 population)
+                  group='country'    # group lines by country
+              ))
+    + p9.geom_line(alpha=0.4)       # plot lines for each country with transparency 0.4
+    + p9.geom_point(size=0.5)        # add tiny points to emphasize yearly values
+    + p9.ggtitle("Asia's Migration Rate Volatility (1950 onward)")  # Title
+    + p9.xlab("Year")                # Label x-axis
+    + p9.ylab("Net Migration Rate (per 1000 people)")  # Label y-axis
+    + p9.theme_minimal()             # Minimal clean theme
+)
+
+```
+
+Explanation:
+
+Migration trends within Asia show noticeable volatility over time, driven by wars, economic booms, and policy changes. Certain countries like the Gulf States have seen spikes in net migration due to labor demands, while others have faced mass emigration during conflicts.
+
+# A deeper dive shows that these Asian countries and the historic events lead to the sharp increase and decrease in the trend line:
+
+Hongkong in 1964, saw many foreign firms relocated their offices from Shanghai to Hong Kong, contributing to Hong Kong's transformation from an entrepôt trade territory to one of industry and manufacturing.
+
+Hong Kong's 1967 net migration decline, likely driven by the leftist riots and resulting instability.
+
+In August 1990, Iraq invaded and occupied Kuwait. This led to a mass exodus of both Kuwaiti citizens and foreign residents, who fled the violence and instability.
+
+:::
+
+# Conclusion
+
+Migration trends reflect the economic vitality, political stability, and social opportunities within nations and regions.  
+By understanding these dynamics, policymakers, humanitarian organizations, and global citizens can better address the challenges and opportunities that migration presents.
+
+Together, we can foster inclusive policies and sustainable growth worldwide.
+

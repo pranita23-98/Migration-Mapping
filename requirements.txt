@@ -1,0 +1,10 @@
+quarto
+pyyaml
+nbclient
+nbformat
+pandas
+geopandas
+pyogrio
+plotnine
+matplotlib
+scipy
