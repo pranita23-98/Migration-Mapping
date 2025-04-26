@@ -1,5 +1,4 @@
-"""
-Mapping Migration: Trends, Insights, and Economic Impact
+# Mapping Migration: Trends, Insights, and Economic Impact
 Author: Pranita Deshmukh
 
 --------------------------------------
@@ -18,8 +17,8 @@ Outputs include:
 Setup Instructions:
 
 1. Clone the repository (if applicable):
-    git clone https://github.com/your-username/your-repo-name.git
-    cd your-repo-name
+    git clone https://github.com/pranita23-98/Migration-Mapping
+    cd Migration-Mapping
 
 2. (Optional) Create and activate a virtual environment:
     python -m venv venv
